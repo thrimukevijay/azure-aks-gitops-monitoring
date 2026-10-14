@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aks-webapp
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/thrimukevijay/azure-aks-gitops-monitoring.git
+    targetRevision: main
+    path: helm/aks-webapp
+    helm:
+      parameters:
+        - name: image.repository
+          value: <acr-login-server>/aks-webapp
+        - name: image.tag
+          value: latest
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

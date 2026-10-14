@@ -1,0 +1,75 @@
+name: Build and Deploy to AKS using Helm
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "app/**"
+      - ".github/workflows/deploy-aks.yml"
+     
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ACR_NAME: ${{ vars.ACR_NAME }}
+  ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER }}
+  AKS_RESOURCE_GROUP: ${{ vars.AKS_RESOURCE_GROUP }}
+  AKS_CLUSTER_NAME: ${{ vars.AKS_CLUSTER_NAME }}
+  IMAGE_NAME: ${{ vars.IMAGE_NAME }}
+  DEPLOYMENT_NAME: ${{ vars.DEPLOYMENT_NAME }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Azure login using OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Debug variables
+        run: |
+          echo "ACR_NAME=[$ACR_NAME]"
+          echo "ACR_LOGIN_SERVER=[$ACR_LOGIN_SERVER]"
+          echo "AKS_RESOURCE_GROUP=[$AKS_RESOURCE_GROUP]"
+          echo "AKS_CLUSTER_NAME=[$AKS_CLUSTER_NAME]"
+          echo "IMAGE_NAME=[$IMAGE_NAME]"
+          echo "DEPLOYMENT_NAME=[$DEPLOYMENT_NAME]"
+
+      - name: Clean variable spaces
+        run: |
+          echo "ACR_NAME=$(echo "$ACR_NAME" | xargs)" >> $GITHUB_ENV
+          echo "ACR_LOGIN_SERVER=$(echo "$ACR_LOGIN_SERVER" | xargs)" >> $GITHUB_ENV
+          echo "AKS_RESOURCE_GROUP=$(echo "$AKS_RESOURCE_GROUP" | xargs)" >> $GITHUB_ENV
+          echo "AKS_CLUSTER_NAME=$(echo "$AKS_CLUSTER_NAME" | xargs)" >> $GITHUB_ENV
+          echo "IMAGE_NAME=$(echo "$IMAGE_NAME" | xargs)" >> $GITHUB_ENV
+          echo "DEPLOYMENT_NAME=$(echo "$DEPLOYMENT_NAME" | xargs)" >> $GITHUB_ENV
+
+      - name: Build Docker image
+        run: |
+          IMAGE_TAG=${GITHUB_SHA::7}
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          docker build -t $ACR_LOGIN_SERVER/$IMAGE_NAME:$IMAGE_TAG ./app
+
+      - name: Push Docker image to ACR
+        run: |
+          az acr login --name $ACR_NAME
+          docker push $ACR_LOGIN_SERVER/$IMAGE_NAME:$IMAGE_TAG
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group $AKS_RESOURCE_GROUP \
+            --name $AKS_CLUSTER_NAME \
+            --overwrite-existing
+
+      
